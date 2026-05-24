@@ -3768,6 +3768,57 @@ var LayersWindow = function(editorUi, x, y, w, h)
 	}
 	
 	ldiv.appendChild(addLink);
+
+	var focusLink = link.cloneNode(false);
+	focusLink.style.backgroundImage = 'url(' + Editor.opacityImage + ')';
+	focusLink.setAttribute('title', mxResources.get('focusCurrentLayer') ||
+		'Focus Current Layer');
+	ldiv.appendChild(focusLink);
+
+	var opacityInput = document.createElement('input');
+	opacityInput.setAttribute('type', 'range');
+	opacityInput.setAttribute('min', '10');
+	opacityInput.setAttribute('max', '90');
+	opacityInput.setAttribute('title', mxResources.get('opacity'));
+	opacityInput.style.width = '70px';
+	opacityInput.style.margin = '0 4px';
+	opacityInput.style.cursor = 'pointer';
+	ldiv.appendChild(opacityInput);
+
+	var opacityValue = document.createElement('span');
+	opacityValue.style.fontSize = '10px';
+	opacityValue.style.minWidth = '28px';
+	opacityValue.style.textAlign = 'right';
+	ldiv.appendChild(opacityValue);
+
+	function updateLayerOpacityControls()
+	{
+		opacityInput.value = Math.max(10, Math.min(90,
+			parseInt(graph.layerOpacityValue) || 35));
+		opacityValue.innerText = opacityInput.value + '%';
+		mxUtils.setOpacity(focusLink, graph.layerOpacityEnabled ? 100 : 40);
+	};
+
+	mxEvent.addListener(focusLink, 'click', function(evt)
+	{
+		graph.setLayerFocusEnabled(!graph.layerOpacityEnabled);
+		updateLayerOpacityControls();
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(opacityInput, 'input', function(evt)
+	{
+		graph.setLayerOpacityValue(opacityInput.value);
+		updateLayerOpacityControls();
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(opacityInput, 'change', function(evt)
+	{
+		graph.setLayerOpacityValue(opacityInput.value);
+		updateLayerOpacityControls();
+		mxEvent.consume(evt);
+	});
 	
 	function renameLayer(layer)
 	{
@@ -4223,6 +4274,8 @@ var LayersWindow = function(editorUi, x, y, w, h)
 
 	function refresh()
 	{
+		updateLayerOpacityControls();
+
 		if (graph.isEnabled())
 		{
 			removeLink.classList.remove('mxDisabled');
@@ -4458,6 +4511,29 @@ var LayersWindow = function(editorUi, x, y, w, h)
 			});
 
 			div.appendChild(btn);
+
+			var dimBtn = inp.cloneNode(false);
+			dimBtn.setAttribute('src', Editor.opacityImage);
+			dimBtn.setAttribute('title', mxResources.get(
+				graph.isLayerManualOpacity(child) ?
+				'undimLayer' : 'dimLayer') ||
+				(graph.isLayerManualOpacity(child) ? 'Undim Layer' : 'Dim Layer'));
+			mxUtils.setOpacity(dimBtn, graph.isLayerManualOpacity(child) ? 100 : 35);
+
+			if (graph.isEnabled())
+			{
+				dimBtn.style.cursor = 'pointer';
+			}
+
+			mxEvent.addListener(dimBtn, 'click', function(evt)
+			{
+				graph.setLayerManualOpacity(child,
+					!graph.isLayerManualOpacity(child));
+				refresh();
+				mxEvent.consume(evt);
+			});
+
+			div.appendChild(dimBtn);
 			div.appendChild(title);
 			ldiv.appendChild(div);
 			

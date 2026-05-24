@@ -5194,6 +5194,11 @@ Graph.prototype.destroy = function()
 			this.translate.x = this.graph.currentTranslate.x;
 			this.translate.y = this.graph.currentTranslate.y;
 		}
+
+		if (this.graph.applyLayerOpacity != null)
+		{
+			this.graph.applyLayerOpacity();
+		}
 	};
 
 	/**
@@ -6287,6 +6292,178 @@ Graph.prototype.setDefaultParent = function(cell)
 {
 	this.defaultParent = cell;
 	this.fireEvent(new mxEventObject('defaultParentChanged'));
+
+	if (this.applyLayerOpacity != null)
+	{
+		this.applyLayerOpacity();
+	}
+};
+
+/**
+ * Sets the temporary opacity for dimmed layers in percent.
+ */
+Graph.prototype.setLayerOpacityValue = function(value)
+{
+	this.layerOpacityValue = Math.max(10, Math.min(90, parseInt(value) || 35));
+	this.applyLayerOpacity();
+};
+
+/**
+ * Enables temporary dimming of all visible layers except the current layer.
+ */
+Graph.prototype.setLayerFocusEnabled = function(enabled)
+{
+	this.layerOpacityEnabled = enabled == true;
+	this.applyLayerOpacity();
+};
+
+/**
+ * Enables temporary dimming for an individual layer.
+ */
+Graph.prototype.setLayerManualOpacity = function(layer, enabled)
+{
+	if (this.manualLayerOpacity == null)
+	{
+		this.manualLayerOpacity = {};
+	}
+
+	if (layer != null && layer.getId() != null)
+	{
+		if (enabled)
+		{
+			this.manualLayerOpacity[layer.getId()] = true;
+		}
+		else
+		{
+			delete this.manualLayerOpacity[layer.getId()];
+		}
+	}
+
+	this.applyLayerOpacity();
+};
+
+/**
+ * Returns true if the given layer has manual temporary dimming enabled.
+ */
+Graph.prototype.isLayerManualOpacity = function(layer)
+{
+	return layer != null && layer.getId() != null &&
+		this.manualLayerOpacity != null &&
+		this.manualLayerOpacity[layer.getId()] == true;
+};
+
+/**
+ * Applies view-only opacity to rendered layer descendants without changing styles.
+ */
+Graph.prototype.applyLayerOpacity = function()
+{
+	var model = this.getModel();
+	var root = model.root;
+
+	if (root == null)
+	{
+		return;
+	}
+
+	var value = Math.max(10, Math.min(90,
+		parseInt(this.layerOpacityValue) || 35));
+	var defaultParent = this.getDefaultParent();
+	var manual = this.manualLayerOpacity || {};
+	var liveLayers = {};
+	var applyNode = mxUtils.bind(this, function(node, opacity)
+	{
+		if (node != null && node.style != null)
+		{
+			var current = node.style.opacity;
+
+			if (node.mxLayerOpacityApplied != null &&
+				current != node.mxLayerOpacityApplied)
+			{
+				node.mxLayerOpacityBase = current;
+			}
+			else if (node.mxLayerOpacityBase == null)
+			{
+				node.mxLayerOpacityBase = current;
+			}
+
+			if (opacity == null)
+			{
+				if (node.mxLayerOpacityBase != null)
+				{
+					node.style.opacity = node.mxLayerOpacityBase;
+				}
+
+				delete node.mxLayerOpacityBase;
+				delete node.mxLayerOpacityApplied;
+			}
+			else
+			{
+				var base = parseFloat(node.mxLayerOpacityBase);
+
+				if (isNaN(base))
+				{
+					base = 1;
+				}
+
+				node.mxLayerOpacityApplied = String(base * opacity / 100);
+				node.style.opacity = node.mxLayerOpacityApplied;
+			}
+		}
+	});
+	var applyCell = mxUtils.bind(this, function(cell, opacity)
+	{
+		var state = this.view.getState(cell);
+
+		if (state != null)
+		{
+			if (state.shape != null)
+			{
+				applyNode(state.shape.node, opacity);
+			}
+
+			if (state.text != null)
+			{
+				applyNode(state.text.node, opacity);
+			}
+		}
+
+		for (var i = 0; i < model.getChildCount(cell); i++)
+		{
+			applyCell(model.getChildAt(cell, i), opacity);
+		}
+	});
+
+	for (var i = 0; i < model.getChildCount(root); i++)
+	{
+		var layer = model.getChildAt(root, i);
+		var id = layer.getId();
+
+		if (id != null)
+		{
+			liveLayers[id] = true;
+		}
+
+		var opacity = null;
+
+		if (model.isVisible(layer))
+		{
+			if (this.isLayerManualOpacity(layer) ||
+				(this.layerOpacityEnabled == true && layer != defaultParent))
+			{
+				opacity = value;
+			}
+		}
+
+		applyCell(layer, opacity);
+	}
+
+	for (var key in manual)
+	{
+		if (!liveLayers[key])
+		{
+			delete manual[key];
+		}
+	}
 };
 
 /**
@@ -6501,7 +6678,80 @@ Graph.prototype.createLayersDialog = function(onchange, inverted)
 	div.style.position = 'absolute';
 	
 	var model = this.getModel();
+	var graph = this;
 	var childCount = model.getChildCount(model.root);
+	var controls = document.createElement('div');
+	controls.style.whiteSpace = 'nowrap';
+	controls.style.padding = '2px';
+	controls.style.display = 'flex';
+	controls.style.alignItems = 'center';
+
+	var focus = document.createElement('img');
+	focus.setAttribute('draggable', 'false');
+	focus.setAttribute('align', 'absmiddle');
+	focus.setAttribute('border', '0');
+	focus.setAttribute('src', Editor.opacityImage);
+	focus.setAttribute('title', mxResources.get('focusCurrentLayer') ||
+		'Focus Current Layer');
+	focus.style.position = 'relative';
+	focus.style.width = '16px';
+	focus.style.padding = '0px 6px 0 4px';
+	focus.style.cursor = 'pointer';
+
+	if (inverted)
+	{
+		focus.style.filter = 'invert(100%)';
+		focus.style.top = '-2px';
+	}
+
+	var range = document.createElement('input');
+	range.setAttribute('type', 'range');
+	range.setAttribute('min', '10');
+	range.setAttribute('max', '90');
+	range.setAttribute('title', mxResources.get('opacity') || 'Opacity');
+	range.value = Math.max(10, Math.min(90,
+		parseInt(this.layerOpacityValue) || 35));
+	range.style.width = '80px';
+	range.style.cursor = 'pointer';
+
+	var value = document.createElement('span');
+	value.style.paddingLeft = '4px';
+	value.style.fontSize = '10px';
+
+	var updateControls = mxUtils.bind(this, function()
+	{
+		range.value = Math.max(10, Math.min(90,
+			parseInt(this.layerOpacityValue) || 35));
+		value.innerText = range.value + '%';
+		mxUtils.setOpacity(focus, this.layerOpacityEnabled ? 100 : 40);
+	});
+
+	mxEvent.addListener(focus, 'click', mxUtils.bind(this, function(evt)
+	{
+		this.setLayerFocusEnabled(!this.layerOpacityEnabled);
+		updateControls();
+		mxEvent.consume(evt);
+	}));
+
+	mxEvent.addListener(range, 'input', mxUtils.bind(this, function(evt)
+	{
+		this.setLayerOpacityValue(range.value);
+		updateControls();
+		mxEvent.consume(evt);
+	}));
+
+	mxEvent.addListener(range, 'change', mxUtils.bind(this, function(evt)
+	{
+		this.setLayerOpacityValue(range.value);
+		updateControls();
+		mxEvent.consume(evt);
+	}));
+
+	controls.appendChild(focus);
+	controls.appendChild(range);
+	controls.appendChild(value);
+	div.appendChild(controls);
+	updateControls();
 	
 	for (var i = 0; i < childCount; i++)
 	{
@@ -6535,6 +6785,14 @@ Graph.prototype.createLayersDialog = function(onchange, inverted)
 			}
 
 			span.appendChild(inp);
+
+			var dim = inp.cloneNode(false);
+			dim.setAttribute('src', Editor.opacityImage);
+			dim.setAttribute('title', mxResources.get(
+				graph.isLayerManualOpacity(layer) ?
+				'undimLayer' : 'dimLayer') ||
+				(graph.isLayerManualOpacity(layer) ? 'Undim Layer' : 'Dim Layer'));
+			span.appendChild(dim);
 			
 			mxUtils.write(span, title);
 			div.appendChild(span);
@@ -6551,9 +6809,23 @@ Graph.prototype.createLayersDialog = function(onchange, inverted)
 					inp.setAttribute('src', Editor.hiddenImage);
 					mxUtils.setOpacity(span, 25);
 				}
+
+				mxUtils.setOpacity(dim, graph.isLayerManualOpacity(layer) ? 100 : 35);
+				dim.setAttribute('title', mxResources.get(
+					graph.isLayerManualOpacity(layer) ?
+					'undimLayer' : 'dimLayer') ||
+					(graph.isLayerManualOpacity(layer) ? 'Undim Layer' : 'Dim Layer'));
 			};
 			
-			mxEvent.addListener(span, 'click', function()
+			mxEvent.addListener(dim, 'click', mxUtils.bind(this, function(evt)
+			{
+				this.setLayerManualOpacity(layer,
+					!this.isLayerManualOpacity(layer));
+				update();
+				mxEvent.consume(evt);
+			}));
+
+			mxEvent.addListener(span, 'click', function(evt)
 			{
 				model.setVisible(layer, !model.isVisible(layer));
 				update();
@@ -6562,6 +6834,8 @@ Graph.prototype.createLayersDialog = function(onchange, inverted)
 				{
 					onchange(layer);
 				}
+
+				mxEvent.consume(evt);
 			});
 
 			update();
