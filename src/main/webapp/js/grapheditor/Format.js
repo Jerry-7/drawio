@@ -261,6 +261,20 @@ Format.prototype.immediateRefresh = function()
 	});
 	
 	var idx = 0;
+	var addLayersTab = mxUtils.bind(this, function(lastEntry)
+	{
+		var layersLabel = label.cloneNode(false);
+		var layersPanel = div.cloneNode(false);
+		var title = document.createElement('div');
+		layersPanel.style.display = 'none';
+		mxUtils.write(title, mxResources.get('layers'));
+		layersLabel.appendChild(title);
+		layersLabel.setAttribute('title', mxResources.get('layers'));
+		div.appendChild(layersLabel);
+		this.panels.push(new LayersFormatPanel(this, ui, layersPanel));
+		this.container.appendChild(layersPanel);
+		addClickHandler(layersLabel, layersPanel, idx++, lastEntry);
+	});
 
 	if (graph.isSelectionEmpty())
 	{
@@ -276,6 +290,7 @@ Format.prototype.immediateRefresh = function()
 		
 		var label2 = label.cloneNode(false);
 		addClickHandler(label, diagramPanel, idx++);
+		addLayersTab(false);
 		
 		var stylePanel = div.cloneNode(false);
 		stylePanel.style.display = 'none';
@@ -291,6 +306,8 @@ Format.prototype.immediateRefresh = function()
 	}
 	else if (graph.isEditing())
 	{
+		addLayersTab(false);
+
 		// Text Editing
 		var title = document.createElement('div');
 		mxUtils.write(title, mxResources.get('text'));
@@ -350,6 +367,7 @@ Format.prototype.immediateRefresh = function()
 		arrangePanel.style.display = 'none';
 		this.panels.push(new ArrangePanel(this, ui, arrangePanel));
 		this.container.appendChild(arrangePanel);
+		addLayersTab(false);
 
 		if (ss.cells.length > 0)
 		{
@@ -1634,6 +1652,415 @@ BaseFormatPanel.prototype.destroy = function()
 		
 		this.listeners = null;
 	}
+};
+
+/**
+ * Adds the layer focus tree to the right format panel.
+ */
+LayersFormatPanel = function(format, editorUi, container)
+{
+	BaseFormatPanel.call(this, format, editorUi, container);
+	this.init();
+};
+
+mxUtils.extend(LayersFormatPanel, BaseFormatPanel);
+
+/**
+ * Adds the layer focus tree.
+ */
+LayersFormatPanel.prototype.init = function()
+{
+	var ui = this.editorUi;
+	var graph = ui.editor.graph;
+	var model = graph.getModel();
+	var panel = this.createPanel();
+	var controls = document.createElement('div');
+	var list = document.createElement('div');
+	var toolbar = document.createElement('div');
+	var addBtn = document.createElement('a');
+	var renameBtn = document.createElement('a');
+	var removeBtn = document.createElement('a');
+
+	this.container.appendChild(panel);
+	panel.appendChild(this.createTitle(mxResources.get('layers')));
+	panel.appendChild(toolbar);
+	panel.appendChild(controls);
+	panel.appendChild(list);
+
+	toolbar.className = 'geToolbarContainer';
+	toolbar.style.display = 'flex';
+	toolbar.style.alignItems = 'center';
+	toolbar.style.justifyContent = 'flex-end';
+	toolbar.style.padding = '6px 0 4px 0';
+	toolbar.style.gap = '2px';
+
+	addBtn.className = 'geButton';
+	addBtn.style.backgroundImage = 'url(' + Editor.plusImage + ')';
+	addBtn.setAttribute('title', mxResources.get('addLayer'));
+	toolbar.appendChild(addBtn);
+
+	renameBtn.className = 'geButton';
+	renameBtn.style.backgroundImage = 'url(' + Editor.editImage + ')';
+	renameBtn.setAttribute('title', mxResources.get('rename'));
+	toolbar.appendChild(renameBtn);
+
+	removeBtn.className = 'geButton';
+	removeBtn.style.backgroundImage = 'url(' + Editor.trashImage + ')';
+	removeBtn.setAttribute('title', mxResources.get('delete'));
+	toolbar.appendChild(removeBtn);
+
+	controls.style.display = 'flex';
+	controls.style.alignItems = 'center';
+	controls.style.padding = '6px 0 8px 0';
+	controls.style.gap = '6px';
+
+	var mode = document.createElement('button');
+	mode.setAttribute('title', mxResources.get('layerFocusMode') ||
+		'Switch layer focus mode');
+	mode.style.flex = '1';
+	mode.style.cursor = 'pointer';
+	controls.appendChild(mode);
+
+	var opacity = document.createElement('input');
+	opacity.setAttribute('type', 'range');
+	opacity.setAttribute('min', '10');
+	opacity.setAttribute('max', '90');
+	opacity.setAttribute('title', mxResources.get('opacity'));
+	opacity.style.width = '72px';
+	opacity.style.cursor = 'pointer';
+	controls.appendChild(opacity);
+
+	list.style.position = 'relative';
+	list.style.padding = '2px 0 2px 0';
+
+	function getCurrentLayer()
+	{
+		var layer = graph.getDefaultParent();
+
+		if (layer == null || model.getParent(layer) != model.root)
+		{
+			layer = (model.getChildCount(model.root) > 0) ?
+				model.getChildAt(model.root, 0) : null;
+		}
+
+		return layer;
+	};
+
+	function setFallbackCurrentLayer(layer)
+	{
+		if (layer == graph.getDefaultParent())
+		{
+			var fallback = null;
+
+			for (var i = 0; i < model.getChildCount(model.root); i++)
+			{
+				var child = model.getChildAt(model.root, i);
+
+				if (child != layer)
+				{
+					fallback = child;
+					break;
+				}
+			}
+
+			graph.setDefaultParent(fallback);
+		}
+	};
+
+	function renameLayer(layer)
+	{
+		if (layer != null)
+		{
+			ui.prompt(mxResources.get('rename'),
+				graph.convertValueToString(layer) || mxResources.get('untitledLayer'),
+				function(newValue)
+				{
+					if (typeof newValue === 'string')
+					{
+						newValue = mxUtils.trim(newValue);
+						graph.cellLabelChanged(layer, (newValue.length > 0) ?
+							newValue : mxResources.get('untitledLayer'));
+					}
+				}, true);
+		}
+	};
+
+	function addLayer()
+	{
+		if (graph.isEnabled())
+		{
+			var cell = null;
+
+			model.beginUpdate();
+			try
+			{
+				cell = graph.addCell(new mxCell(mxResources.get('untitledLayer')), model.root);
+				graph.setDefaultParent(cell);
+				model.setVisible(cell, true);
+				graph.setLayerManualOpacity(cell, false);
+			}
+			finally
+			{
+				model.endUpdate();
+			}
+
+			renameLayer(cell);
+		}
+	};
+
+	function removeLayer(layer)
+	{
+		if (graph.isEnabled() && layer != null)
+		{
+			model.beginUpdate();
+			try
+			{
+				graph.removeCells([layer], false);
+
+				if (model.getChildCount(model.root) == 0)
+				{
+					var cell = model.add(model.root, new mxCell());
+					model.setVisible(cell, true);
+					graph.setDefaultParent(cell);
+				}
+				else
+				{
+					setFallbackCurrentLayer(layer);
+				}
+			}
+			finally
+			{
+				model.endUpdate();
+			}
+		}
+	};
+
+	function cycleState(layer)
+	{
+		if (graph.isEnabled() && layer != null)
+		{
+			model.beginUpdate();
+			try
+			{
+				if (!model.isVisible(layer))
+				{
+					model.setVisible(layer, true);
+					graph.setLayerManualOpacity(layer, false);
+				}
+				else if (graph.isLayerManualOpacity(layer))
+				{
+					graph.setLayerManualOpacity(layer, false);
+					model.setVisible(layer, false);
+					setFallbackCurrentLayer(layer);
+				}
+				else
+				{
+					model.setVisible(layer, true);
+					graph.setLayerManualOpacity(layer, true);
+				}
+			}
+			finally
+			{
+				model.endUpdate();
+			}
+		}
+	};
+
+	mxEvent.addListener(addBtn, 'click', function(evt)
+	{
+		addLayer();
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(renameBtn, 'click', function(evt)
+	{
+		renameLayer(getCurrentLayer());
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(removeBtn, 'click', function(evt)
+	{
+		removeLayer(getCurrentLayer());
+		mxEvent.consume(evt);
+	});
+
+	function update()
+	{
+		opacity.value = Math.max(10, Math.min(90,
+			parseInt(graph.layerOpacityValue) || 35));
+		mode.innerText = (graph.layerFocusAllOpaque == true ||
+			graph.layerOpacityEnabled != true) ?
+			(mxResources.get('allLayersOpaque') || 'All Opaque') :
+			(mxResources.get('currentLayerOpaque') || 'Current Opaque');
+		list.innerText = '';
+
+		var count = model.getChildCount(model.root);
+
+		for (var i = count - 1; i >= 0; i--)
+		{
+			(function(layer, index)
+			{
+				var label = graph.convertValueToString(layer) ||
+					mxResources.get('background');
+				var row = document.createElement('div');
+				row.style.display = 'flex';
+				row.style.alignItems = 'center';
+				row.style.minHeight = '26px';
+				row.style.cursor = 'pointer';
+				row.style.userSelect = 'none';
+				row.style.padding = '1px 4px 1px 8px';
+				row.style.whiteSpace = 'nowrap';
+				row.setAttribute('title', label + ' (' + layer.getId() + ')');
+				row.style.borderRadius = '4px';
+
+				var state = document.createElement('img');
+				state.className = 'geAdaptiveAsset';
+				state.style.width = '16px';
+				state.style.height = '16px';
+				state.style.marginRight = '8px';
+				state.style.flexShrink = '0';
+				state.style.cursor = graph.isEnabled() ? 'pointer' : '';
+				row.appendChild(state);
+
+				var text = document.createElement('div');
+				text.style.overflow = 'hidden';
+				text.style.textOverflow = 'ellipsis';
+				text.style.flex = '1';
+				mxUtils.write(text, label);
+				row.appendChild(text);
+
+				var badge = document.createElement('span');
+				badge.style.fontSize = '10px';
+				badge.style.lineHeight = '16px';
+				badge.style.padding = '0 6px';
+				badge.style.borderRadius = '10px';
+				badge.style.marginLeft = '6px';
+				badge.style.flexShrink = '0';
+				badge.style.display = 'none';
+				row.appendChild(badge);
+
+				var visible = model.isVisible(layer);
+				var dimmed = visible && graph.isLayerManualOpacity(layer);
+				var current = graph.getDefaultParent() == layer;
+
+				if (!visible)
+				{
+					state.setAttribute('src', Editor.hiddenImage);
+					state.setAttribute('title', mxResources.get('show'));
+					mxUtils.setOpacity(state, 55);
+					mxUtils.setOpacity(row, 35);
+					badge.style.display = '';
+					badge.style.backgroundColor = 'rgba(0, 0, 0, 0.06)';
+					badge.style.color = '#666666';
+					mxUtils.write(badge, mxResources.get('hidden'));
+				}
+				else if (dimmed)
+				{
+					state.setAttribute('src', Editor.opacityImage);
+					state.setAttribute('title', mxResources.get('undimLayer') ||
+						'Undim Layer');
+					mxUtils.setOpacity(state, 80);
+					mxUtils.setOpacity(row, 65);
+					badge.style.display = '';
+					badge.style.backgroundColor = 'rgba(0, 0, 0, 0.06)';
+					badge.style.color = '#666666';
+					mxUtils.write(badge, mxResources.get('opacity'));
+				}
+				else
+				{
+					state.setAttribute('src', Editor.visibleImage);
+					state.setAttribute('title', mxResources.get('dimLayer') ||
+						'Dim Layer');
+					mxUtils.setOpacity(state, 100);
+					mxUtils.setOpacity(row, 100);
+				}
+
+				if (current)
+				{
+					row.style.fontWeight = 'bold';
+					row.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+					row.style.boxShadow = 'inset 3px 0 0 #4a8cff';
+
+					if (visible)
+					{
+						badge.style.display = '';
+						badge.style.backgroundColor = 'rgba(74, 140, 255, 0.12)';
+						badge.style.color = '#2f5fb8';
+						mxUtils.write(badge, mxResources.get('currentLayer'));
+					}
+				}
+
+				mxEvent.addListener(state, 'click', function(evt)
+				{
+					cycleState(layer);
+					update();
+					mxEvent.consume(evt);
+				});
+
+				mxEvent.addListener(state, 'dblclick', function(evt)
+				{
+					mxEvent.consume(evt);
+				});
+
+				mxEvent.addListener(row, 'click', function(evt)
+				{
+					graph.setDefaultParent(layer);
+					graph.view.setCurrentRoot(null);
+					update();
+					mxEvent.consume(evt);
+				});
+
+				mxEvent.addListener(row, 'dblclick', function(evt)
+				{
+					if (mxEvent.getSource(evt) != state)
+					{
+						renameLayer(layer);
+						mxEvent.consume(evt);
+					}
+				});
+
+				list.appendChild(row);
+			})(model.getChildAt(model.root, i), i);
+		}
+	};
+
+	mxEvent.addListener(mode, 'click', function(evt)
+	{
+		graph.setLayerFocusMode(!(graph.layerFocusAllOpaque == true ||
+			graph.layerOpacityEnabled != true));
+		update();
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(opacity, 'input', function(evt)
+	{
+		graph.setLayerOpacityValue(opacity.value);
+		update();
+		mxEvent.consume(evt);
+	});
+
+	mxEvent.addListener(opacity, 'change', function(evt)
+	{
+		graph.setLayerOpacityValue(opacity.value);
+		update();
+		mxEvent.consume(evt);
+	});
+
+	var listener = function()
+	{
+		update();
+	};
+
+	model.addListener(mxEvent.CHANGE, listener);
+	graph.addListener('defaultParentChanged', listener);
+	graph.addListener('layerOpacityChanged', listener);
+	this.listeners.push({destroy: function()
+	{
+		model.removeListener(listener);
+		graph.removeListener(listener);
+	}});
+
+	update();
 };
 
 /**
