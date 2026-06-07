@@ -6295,6 +6295,12 @@ Graph.prototype.setDefaultParent = function(cell)
 
 	if (this.applyLayerOpacity != null)
 	{
+		if (this.layerOpacityEnabled == true &&
+			this.layerFocusCurrentOnly == true)
+		{
+			this.setLayerFocusMode(false, true);
+		}
+
 		this.applyLayerOpacity();
 	}
 };
@@ -6306,6 +6312,7 @@ Graph.prototype.setLayerOpacityValue = function(value)
 {
 	this.layerOpacityValue = Math.max(10, Math.min(90, parseInt(value) || 35));
 	this.applyLayerOpacity();
+	this.fireEvent(new mxEventObject('layerOpacityChanged'));
 };
 
 /**
@@ -6314,7 +6321,87 @@ Graph.prototype.setLayerOpacityValue = function(value)
 Graph.prototype.setLayerFocusEnabled = function(enabled)
 {
 	this.layerOpacityEnabled = enabled == true;
+
+	if (this.layerOpacityEnabled)
+	{
+		this.setLayerFocusMode(false, true);
+	}
+
 	this.applyLayerOpacity();
+	this.fireEvent(new mxEventObject('layerOpacityChanged'));
+};
+
+/**
+ * Sets if all layers should remain opaque in layer focus mode.
+ */
+Graph.prototype.setLayerFocusMode = function(allOpaque, quiet)
+{
+	this.layerFocusAllOpaque = allOpaque == true;
+
+	if (!this.layerFocusAllOpaque)
+	{
+		this.layerFocusCurrentOnly = true;
+		this.layerOpaqueLayers = {};
+		var parent = this.getDefaultParent();
+
+		if (parent != null && parent.getId() != null)
+		{
+			this.layerOpaqueLayers[parent.getId()] = true;
+		}
+	}
+	else
+	{
+		this.layerFocusCurrentOnly = false;
+		this.layerOpaqueLayers = {};
+	}
+
+	if (quiet != true)
+	{
+		this.layerOpacityEnabled = !this.layerFocusAllOpaque;
+		this.applyLayerOpacity();
+		this.fireEvent(new mxEventObject('layerOpacityChanged'));
+	}
+};
+
+/**
+ * Returns true if the given layer remains opaque in layer focus mode.
+ */
+Graph.prototype.isLayerOpaque = function(layer)
+{
+	return layer != null && layer.getId() != null &&
+		(this.layerFocusAllOpaque == true ||
+		(this.layerOpaqueLayers != null &&
+		this.layerOpaqueLayers[layer.getId()] == true));
+};
+
+/**
+ * Sets if the given layer remains opaque in layer focus mode.
+ */
+Graph.prototype.setLayerOpaque = function(layer, enabled, additive)
+{
+	if (this.layerOpaqueLayers == null || additive != true)
+	{
+		this.layerOpaqueLayers = {};
+	}
+
+	this.layerFocusAllOpaque = false;
+	this.layerFocusCurrentOnly = false;
+	this.layerOpacityEnabled = true;
+
+	if (layer != null && layer.getId() != null)
+	{
+		if (enabled != false)
+		{
+			this.layerOpaqueLayers[layer.getId()] = true;
+		}
+		else
+		{
+			delete this.layerOpaqueLayers[layer.getId()];
+		}
+	}
+
+	this.applyLayerOpacity();
+	this.fireEvent(new mxEventObject('layerOpacityChanged'));
 };
 
 /**
@@ -6340,6 +6427,7 @@ Graph.prototype.setLayerManualOpacity = function(layer, enabled)
 	}
 
 	this.applyLayerOpacity();
+	this.fireEvent(new mxEventObject('layerOpacityChanged'));
 };
 
 /**
@@ -6448,7 +6536,10 @@ Graph.prototype.applyLayerOpacity = function()
 		if (model.isVisible(layer))
 		{
 			if (this.isLayerManualOpacity(layer) ||
-				(this.layerOpacityEnabled == true && layer != defaultParent))
+				(this.layerOpacityEnabled == true &&
+				this.layerFocusAllOpaque != true &&
+				!this.isLayerOpaque(layer) &&
+				!(this.layerOpaqueLayers == null && layer == defaultParent)))
 			{
 				opacity = value;
 			}
