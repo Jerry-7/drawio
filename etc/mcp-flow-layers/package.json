@@ -1,0 +1,13 @@
+{
+  "name": "drawio-flow-layers-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for generating layered draw.io flow diagrams from agent-produced call-chain data",
+  "main": "server.js",
+  "bin": {
+    "drawio-flow-layers": "./cli.js"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "check": "node --check generator.js && node --check server.js && node --check cli.js"
+  }
+}
