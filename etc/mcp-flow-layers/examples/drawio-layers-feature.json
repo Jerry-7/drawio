@@ -1,0 +1,304 @@
+{
+  "title": "draw.io Layers Feature Flow",
+  "pageName": "Layers Feature",
+  "direction": "horizontal",
+  "outputPath": "etc/mcp-flow-layers/examples/drawio-layers-feature.drawio",
+  "layers": [
+    {
+      "id": "ui_entrypoints",
+      "label": "UI Entrypoints",
+      "description": "Three user-facing entry points for layer controls"
+    },
+    {
+      "id": "format_sidebar",
+      "label": "Format Sidebar",
+      "description": "Right sidebar layers tab behavior"
+    },
+    {
+      "id": "graph_state",
+      "label": "Graph State",
+      "description": "Temporary layer opacity state and focus mode"
+    },
+    {
+      "id": "render_apply",
+      "label": "Render Apply",
+      "description": "Apply opacity to rendered layer descendants"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "class_layers_window",
+      "type": "class_card",
+      "layer": "ui_entrypoints",
+      "title": "LayersWindow",
+      "responsibility": "Classic floating layer window with add, remove, rename, visibility, lock, and dim controls.",
+      "methods": [
+        {
+          "name": "refresh()",
+          "description": "Rebuilds visible rows from model.root children"
+        },
+        {
+          "name": "renameLayer(layer)",
+          "description": "Inline rename in floating window"
+        }
+      ]
+    },
+    {
+      "id": "method_create_layers_dialog",
+      "type": "method_card",
+      "layer": "ui_entrypoints",
+      "title": "Graph.createLayersDialog(onchange, inverted)",
+      "inputs": [
+        {
+          "name": "onchange",
+          "meaning": "Refresh callback after layer interaction"
+        },
+        {
+          "name": "inverted",
+          "meaning": "Use inverted icon treatment for chromeless UI"
+        }
+      ],
+      "logic": [
+        "Build a lightweight layer popup for chromeless or embed UI",
+        "Create focus toggle and opacity slider",
+        "Render per-layer visibility and dim controls",
+        "Call onchange after visibility changes"
+      ],
+      "outputs": [
+        {
+          "name": "div",
+          "meaning": "DOM container for the lightweight layers popup"
+        }
+      ]
+    },
+    {
+      "id": "class_layers_format_panel",
+      "type": "class_card",
+      "layer": "format_sidebar",
+      "title": "LayersFormatPanel",
+      "responsibility": "Right sidebar layers tab for quick layer management and state cycling.",
+      "methods": [
+        {
+          "name": "init()",
+          "description": "Builds toolbar, focus controls, and layer list"
+        },
+        {
+          "name": "cycleState(layer)",
+          "description": "Cycles visible -> dimmed -> hidden"
+        },
+        {
+          "name": "renameLayer(layer)",
+          "description": "Prompt-based rename using text mode"
+        }
+      ]
+    },
+    {
+      "id": "method_cycle_state",
+      "type": "method_card",
+      "layer": "format_sidebar",
+      "title": "cycleState(layer)",
+      "inputs": [
+        {
+          "name": "layer",
+          "meaning": "Target root child layer cell"
+        }
+      ],
+      "logic": [
+        "If hidden, show the layer and clear manual dimming",
+        "If visible and dimmed, clear dimming then hide the layer",
+        "If visible and normal, keep visible and enable manual dimming"
+      ],
+      "outputs": [
+        {
+          "name": "layer state",
+          "meaning": "Updated display state in model + temporary opacity flags"
+        }
+      ]
+    },
+    {
+      "id": "method_set_layer_focus_mode",
+      "type": "method_card",
+      "layer": "graph_state",
+      "title": "Graph.setLayerFocusMode(allOpaque, quiet)",
+      "inputs": [
+        {
+          "name": "allOpaque",
+          "meaning": "Whether all layers remain fully opaque"
+        },
+        {
+          "name": "quiet",
+          "meaning": "Suppress event emission and avoid external refresh noise"
+        }
+      ],
+      "logic": [
+        "Switch between all-opaque mode and current-layer focus mode",
+        "Reset the opaque-layer whitelist when mode changes",
+        "Seed whitelist with current default parent when entering focused mode",
+        "Apply opacity and emit layerOpacityChanged unless quiet"
+      ],
+      "outputs": [
+        {
+          "name": "layerFocusAllOpaque",
+          "meaning": "Updated focus mode flag"
+        }
+      ]
+    },
+    {
+      "id": "method_set_layer_manual_opacity",
+      "type": "method_card",
+      "layer": "graph_state",
+      "title": "Graph.setLayerManualOpacity(layer, enabled)",
+      "inputs": [
+        {
+          "name": "layer",
+          "meaning": "Target layer cell"
+        },
+        {
+          "name": "enabled",
+          "meaning": "Whether the layer should be manually dimmed"
+        }
+      ],
+      "logic": [
+        "Initialize the manual opacity map if missing",
+        "Add or remove the layer id in that map",
+        "Re-apply opacity to rendered states",
+        "Emit layerOpacityChanged to refresh UI consumers"
+      ],
+      "outputs": [
+        {
+          "name": "manualLayerOpacity",
+          "meaning": "Updated per-layer temporary dimming map"
+        }
+      ]
+    },
+    {
+      "id": "method_apply_layer_opacity",
+      "type": "method_card",
+      "layer": "render_apply",
+      "title": "Graph.applyLayerOpacity()",
+      "inputs": [
+        {
+          "name": "layerOpacityValue",
+          "meaning": "Configured dim opacity percent"
+        },
+        {
+          "name": "defaultParent",
+          "meaning": "Current active layer"
+        }
+      ],
+      "logic": [
+        "Walk root-level layers and skip null roots",
+        "Decide per-layer opacity using visible state, manual dim flag, and focus mode",
+        "Traverse rendered descendant states and patch shape/text DOM opacity only",
+        "Clean stale layer ids from manual opacity storage"
+      ],
+      "outputs": [
+        {
+          "name": "rendered opacity",
+          "meaning": "Temporary view-only opacity applied to DOM nodes"
+        }
+      ]
+    },
+    {
+      "id": "decision_layer_state",
+      "type": "decision_card",
+      "layer": "render_apply",
+      "title": "Should this layer be dimmed?",
+      "condition": "Layer is visible and either manually dimmed or excluded from current focus set",
+      "branches": [
+        "Yes: apply configured opacity percent",
+        "No: restore original opacity"
+      ]
+    },
+    {
+      "id": "data_manual_opacity_map",
+      "type": "data_card",
+      "layer": "graph_state",
+      "title": "manualLayerOpacity",
+      "fields": [
+        {
+          "name": "layerId",
+          "meaning": "Root layer cell id"
+        },
+        {
+          "name": "enabled",
+          "meaning": "Whether temporary dimming is enabled for that layer"
+        }
+      ],
+      "source": "LayersFormatPanel / LayersWindow / createLayersDialog",
+      "target": "Graph.applyLayerOpacity"
+    },
+    {
+      "id": "note_view_only",
+      "type": "note_card",
+      "layer": "render_apply",
+      "title": "Reader Notes",
+      "notes": [
+        "The opacity feature is view-only and does not change saved XML style data",
+        "Both the floating window and the right sidebar are thin UIs over the same Graph state"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "class_layers_window",
+      "to": "method_set_layer_manual_opacity",
+      "kind": "call",
+      "label": "per-layer dim button"
+    },
+    {
+      "from": "method_create_layers_dialog",
+      "to": "method_set_layer_focus_mode",
+      "kind": "call",
+      "label": "focus toggle"
+    },
+    {
+      "from": "class_layers_format_panel",
+      "to": "method_cycle_state",
+      "kind": "contains",
+      "label": "row state handler"
+    },
+    {
+      "from": "method_cycle_state",
+      "to": "method_set_layer_manual_opacity",
+      "kind": "call",
+      "label": "dim / undim"
+    },
+    {
+      "from": "class_layers_format_panel",
+      "to": "method_set_layer_focus_mode",
+      "kind": "call",
+      "label": "mode toggle"
+    },
+    {
+      "from": "method_set_layer_focus_mode",
+      "to": "method_apply_layer_opacity",
+      "kind": "call",
+      "label": "refresh view"
+    },
+    {
+      "from": "method_set_layer_manual_opacity",
+      "to": "data_manual_opacity_map",
+      "kind": "data_flow",
+      "label": "update map"
+    },
+    {
+      "from": "data_manual_opacity_map",
+      "to": "method_apply_layer_opacity",
+      "kind": "data_flow",
+      "label": "read flags"
+    },
+    {
+      "from": "method_apply_layer_opacity",
+      "to": "decision_layer_state",
+      "kind": "call",
+      "label": "per layer check"
+    },
+    {
+      "from": "decision_layer_state",
+      "to": "note_view_only",
+      "kind": "dependency",
+      "label": "explains behavior"
+    }
+  ]
+}

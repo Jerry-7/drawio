@@ -1,0 +1,58 @@
+{
+  "title": "Project KG Call Flow",
+  "pageName": "Core Method Flows",
+  "direction": "horizontal",
+  "outputPath": "etc/mcp-flow-layers/examples/project-kg-flow.drawio",
+  "chains": [
+    {
+      "id": "trace_feature_flow",
+      "label": "Trace Feature Flow",
+      "description": "Static trace from query entrypoint to symbol resolver",
+      "steps": [
+        {
+          "label": "trace_feature_flow",
+          "subtitle": "tool entrypoint"
+        },
+        {
+          "label": "load project index",
+          "subtitle": ".project-kg files"
+        },
+        {
+          "label": "resolve symbol match",
+          "subtitle": "query to function"
+        },
+        {
+          "label": "walk call graph",
+          "subtitle": "bounded depth"
+        },
+        {
+          "label": "format trace result",
+          "subtitle": "MCP response"
+        }
+      ]
+    },
+    {
+      "id": "generate_drawio",
+      "label": "Generate Diagram",
+      "description": "Diagram rendering path",
+      "steps": [
+        {
+          "label": "generate_drawio",
+          "subtitle": "tool entrypoint"
+        },
+        {
+          "label": "load graph summary",
+          "subtitle": "indexed metadata"
+        },
+        {
+          "label": "group nodes by mode",
+          "subtitle": "core_modules"
+        },
+        {
+          "label": "emit mermaid/drawio",
+          "subtitle": "formatted output"
+        }
+      ]
+    }
+  ]
+}

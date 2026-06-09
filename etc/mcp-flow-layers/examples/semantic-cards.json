@@ -1,0 +1,156 @@
+{
+  "title": "Trace Feature Flow - Semantic Cards",
+  "pageName": "Semantic Cards",
+  "direction": "horizontal",
+  "outputPath": "etc/mcp-flow-layers/examples/semantic-cards.drawio",
+  "layers": [
+    {
+      "id": "entry_context",
+      "label": "Entry Context",
+      "description": "Caller and owning service"
+    },
+    {
+      "id": "core_method",
+      "label": "Core Method",
+      "description": "Main trace execution path"
+    },
+    {
+      "id": "outputs",
+      "label": "Outputs",
+      "description": "Result objects and notes"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "class_trace_service",
+      "type": "class_card",
+      "layer": "entry_context",
+      "title": "FeatureTraceService",
+      "responsibility": "Coordinates project-index lookup and bounded call-chain tracing.",
+      "methods": [
+        {
+          "name": "traceFeatureFlow(query, maxDepth)",
+          "description": "Main user-facing entrypoint"
+        },
+        {
+          "name": "resolveEntrySymbol(query)",
+          "description": "Maps the query to a concrete symbol"
+        }
+      ]
+    },
+    {
+      "id": "method_trace_feature_flow",
+      "type": "method_card",
+      "layer": "core_method",
+      "title": "traceFeatureFlow(query, maxDepth)",
+      "inputs": [
+        {
+          "name": "query",
+          "meaning": "User-entered feature or method name"
+        },
+        {
+          "name": "maxDepth",
+          "meaning": "Maximum call-depth to traverse"
+        }
+      ],
+      "logic": [
+        "Load the project index from .project-kg files",
+        "Resolve the most likely entry symbol from the query",
+        "Traverse downstream calls until maxDepth is reached",
+        "Format the trace for agent and human consumption"
+      ],
+      "outputs": [
+        {
+          "name": "trace",
+          "meaning": "Ordered call-chain result"
+        }
+      ]
+    },
+    {
+      "id": "decision_symbol_found",
+      "type": "decision_card",
+      "layer": "core_method",
+      "title": "Symbol resolved?",
+      "condition": "Did query resolution produce a concrete method symbol?",
+      "branches": [
+        "Yes: continue to call traversal",
+        "No: return a no-match result with explanation"
+      ]
+    },
+    {
+      "id": "logic_walk_calls",
+      "type": "logic_card",
+      "layer": "core_method",
+      "title": "Walk Call Graph",
+      "logic": [
+        "Visit outbound calls in source order",
+        "Stop when maxDepth is reached",
+        "Skip already-visited symbols to avoid loops"
+      ]
+    },
+    {
+      "id": "data_trace_result",
+      "type": "data_card",
+      "layer": "outputs",
+      "title": "TraceResult",
+      "fields": [
+        {
+          "name": "entrySymbol",
+          "meaning": "Resolved starting method"
+        },
+        {
+          "name": "steps",
+          "meaning": "Ordered methods in the traced path"
+        },
+        {
+          "name": "warnings",
+          "meaning": "Ambiguity, truncation, or missing-edge notes"
+        }
+      ],
+      "source": "traceFeatureFlow",
+      "target": "agent response formatter"
+    },
+    {
+      "id": "note_risk",
+      "type": "note_card",
+      "layer": "outputs",
+      "title": "Reader Notes",
+      "notes": [
+        "Static analysis may miss reflection or dynamic dispatch",
+        "Long chains should be split into additional layers for readability"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "class_trace_service",
+      "to": "method_trace_feature_flow",
+      "kind": "contains",
+      "label": "defines"
+    },
+    {
+      "from": "method_trace_feature_flow",
+      "to": "decision_symbol_found",
+      "kind": "call",
+      "label": "resolve entry"
+    },
+    {
+      "from": "decision_symbol_found",
+      "to": "logic_walk_calls",
+      "kind": "call",
+      "label": "yes"
+    },
+    {
+      "from": "logic_walk_calls",
+      "to": "data_trace_result",
+      "kind": "return",
+      "label": "build result"
+    },
+    {
+      "from": "data_trace_result",
+      "to": "note_risk",
+      "kind": "dependency",
+      "label": "annotated by"
+    }
+  ]
+}
